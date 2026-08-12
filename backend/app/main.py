@@ -29,6 +29,9 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
 
+class SpeakRequest(BaseModel):
+    text: str
+    profile: str = "testsubj1"
 
 @app.get("/health")
 def health_check() -> dict[str, str]:
@@ -56,3 +59,7 @@ async def transcribe(file: UploadFile = File(...)) -> dict[str, str]:
         audio_bytes, file.filename or "recording.webm"
     )
     return {"text": text}
+
+@app.post("/speak")
+async def speak(request: SpeakRequest) -> dict:
+    return await voicebox_client.speak(request.text, request.profile)
