@@ -1,10 +1,11 @@
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.llm.groq_provider import GroqProvider
+from app.voice.voicebox_client import VoiceboxClient
 
 load_dotenv()
 
@@ -18,6 +19,7 @@ app.add_middleware(
 )
 
 llm_provider = GroqProvider()
+voicebox_client = VoiceboxClient()
 
 
 class ChatRequest(BaseModel):
@@ -45,3 +47,12 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
         llm_provider.stream(request.message),
         media_type="text/plain",
     )
+
+
+@app.post("/transcribe")
+async def transcribe(file: UploadFile = File(...)) -> dict[str, str]:
+    audio_bytes = await file.read()
+    text = await voicebox_client.transcribe(
+        audio_bytes, file.filename or "recording.webm"
+    )
+    return {"text": text}

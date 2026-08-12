@@ -50,3 +50,12 @@ class VoiceboxClient:
         raise VoiceboxGenerationError(
             f"Stream for generation {generation_id} ended without a terminal status"
         )
+
+    async def transcribe(self, audio_bytes: bytes, filename: str) -> str:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                f"{self._base_url}/transcribe",
+                files={"file": (filename, audio_bytes)},
+            )
+            response.raise_for_status()
+            return response.json()["text"]
