@@ -34,3 +34,10 @@ class GroqProvider(LLMProvider):
             delta = chunk.choices[0].delta.content
             if delta:
                 yield delta
+
+    async def transcribe(self, audio_bytes: bytes, filename: str) -> str:
+        transcription = await self._client.audio.transcriptions.create(
+            file=(filename, audio_bytes),
+            model="whisper-large-v3-turbo",
+        )
+        return transcription.text

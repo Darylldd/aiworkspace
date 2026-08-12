@@ -52,7 +52,7 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
 @app.post("/transcribe")
 async def transcribe(file: UploadFile = File(...)) -> dict[str, str]:
     audio_bytes = await file.read()
-    text = await voicebox_client.transcribe(
+    text = await llm_provider.transcribe(
         audio_bytes, file.filename or "recording.webm"
     )
     return {"text": text}
