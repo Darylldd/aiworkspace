@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { fetch } from "@tauri-apps/plugin-http";
 
 function App() {
   const [message, setMessage] = useState("");
@@ -15,18 +14,24 @@ function App() {
     setReply("");
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/chat", {
+      const response = await fetch("http://127.0.0.1:8000/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message }),
       });
 
-      if (!response.ok) {
+      if (!response.ok || !response.body) {
         throw new Error(`Backend returned ${response.status}`);
       }
 
-      const data = await response.json();
-      setReply(data.reply);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        setReply((prev) => prev + decoder.decode(value, { stream: true }));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
