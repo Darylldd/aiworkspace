@@ -5,6 +5,7 @@ function App() {
   const [reply, setReply] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const [error, setError] = useState("");
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -98,6 +99,29 @@ function App() {
     }
   }
 
+  async function speakReply() {
+    if (!reply.trim()) return;
+
+    setIsSpeaking(true);
+    setError("");
+
+    try {
+      const response = await fetch("http://127.0.0.1:8000/speak", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: reply }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Speak failed: ${response.status}`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Speak failed");
+    } finally {
+      setIsSpeaking(false);
+    }
+  }
+
   return (
     <main style={{ padding: "2rem", maxWidth: "600px", margin: "0 auto" }}>
       <h1>AI Workspace</h1>
@@ -128,8 +152,13 @@ function App() {
       )}
 
       {reply && (
-        <div style={{ marginTop: "1rem", padding: "1rem", border: "1px solid #ccc" }}>
-          {reply}
+        <div style={{ marginTop: "1rem" }}>
+          <div style={{ padding: "1rem", border: "1px solid #ccc" }}>
+            {reply}
+          </div>
+          <button onClick={speakReply} disabled={isSpeaking} style={{ marginTop: "0.5rem" }}>
+            {isSpeaking ? "Generating speech..." : "Speak"}
+          </button>
         </div>
       )}
     </main>
