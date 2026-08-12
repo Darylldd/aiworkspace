@@ -1,4 +1,5 @@
 import os
+from collections.abc import AsyncIterator
 
 from groq import AsyncGroq
 
@@ -22,3 +23,14 @@ class GroqProvider(LLMProvider):
             messages=[{"role": "user", "content": message}],
         )
         return response.choices[0].message.content or ""
+
+    async def stream(self, message: str) -> AsyncIterator[str]:
+        stream = await self._client.chat.completions.create(
+            model=DEFAULT_MODEL,
+            messages=[{"role": "user", "content": message}],
+            stream=True,
+        )
+        async for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
