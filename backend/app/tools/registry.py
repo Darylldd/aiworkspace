@@ -1,5 +1,7 @@
 from app.tools.base import Tool
 from app.tools.current_time import CurrentTimeTool
+from app.tools.filesystem import ListDirectoryTool, ReadFileTool, SearchFilesTool
+from app.workspace.boundary import WorkspaceBoundary
 
 
 class ToolRegistry:
@@ -16,7 +18,10 @@ class ToolRegistry:
         return [tool.to_groq_schema() for tool in self._tools.values()]
 
 
-def build_default_registry() -> ToolRegistry:
+def build_default_registry(workspace_boundary: WorkspaceBoundary) -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(CurrentTimeTool())
+    registry.register(ListDirectoryTool(workspace_boundary))
+    registry.register(ReadFileTool(workspace_boundary))
+    registry.register(SearchFilesTool(workspace_boundary))
     return registry

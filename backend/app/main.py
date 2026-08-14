@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from app.llm.groq_provider import GroqProvider
 from app.tools.registry import build_default_registry
 from app.voice.voicebox_client import VoiceboxClient
+from app.workspace.boundary import WorkspaceBoundary
 
 load_dotenv()
 
@@ -19,7 +20,8 @@ app.add_middleware(
     allow_headers=["Content-Type"],
 )
 
-tool_registry = build_default_registry()
+workspace_boundary = WorkspaceBoundary(root=".")
+tool_registry = build_default_registry(workspace_boundary)
 llm_provider = GroqProvider(tool_registry=tool_registry)
 voicebox_client = VoiceboxClient()
 
