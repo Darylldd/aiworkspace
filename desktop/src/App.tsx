@@ -1,4 +1,9 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+
+interface VoiceProfile {
+  id: string;
+  name: string;
+}
 
 function App() {
   const [message, setMessage] = useState("");
@@ -8,8 +13,27 @@ function App() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [error, setError] = useState("");
 
+  const [profiles, setProfiles] = useState<VoiceProfile[]>([]);
+  const [selectedProfile, setSelectedProfile] = useState("");
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+
+  useEffect(() => {
+    async function loadProfiles() {
+      try {
+        const response = await fetch("http://127.0.0.1:8000/profiles");
+        if (!response.ok) return;
+        const data: VoiceProfile[] = await response.json();
+        setProfiles(data);
+        if (data.length > 0) setSelectedProfile(data[0].name);
+      } catch {
+        // Profile list is a convenience, not critical — fail silently and
+        // let the user proceed without voice selection if Voicebox is down.
+      }
+    }
+    loadProfiles();
+  }, []);
 
   async function sendMessage() {
     if (!message.trim()) return;
@@ -100,7 +124,7 @@ function App() {
   }
 
   async function speakReply() {
-    if (!reply.trim()) return;
+    if (!reply.trim() || !selectedProfile) return;
 
     setIsSpeaking(true);
     setError("");
@@ -109,7 +133,7 @@ function App() {
       const response = await fetch("http://127.0.0.1:8000/speak", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: reply }),
+        body: JSON.stringify({ text: reply, profile: selectedProfile }),
       });
 
       if (!response.ok) {
@@ -134,7 +158,7 @@ function App() {
         style={{ width: "100%", padding: "0.5rem" }}
       />
 
-      <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem" }}>
+      <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem", alignItems: "center" }}>
         <button onClick={sendMessage} disabled={isLoading}>
           {isLoading ? "Sending..." : "Send"}
         </button>
@@ -145,6 +169,19 @@ function App() {
         >
           {isRecording ? "Stop Recording" : "Record"}
         </button>
+
+        {profiles.length > 0 && (
+          <select
+            value={selectedProfile}
+            onChange={(e) => setSelectedProfile(e.target.value)}
+          >
+            {profiles.map((profile) => (
+              <option key={profile.id} value={profile.name}>
+                {profile.name}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {error && (

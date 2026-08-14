@@ -63,3 +63,7 @@ async def transcribe(file: UploadFile = File(...)) -> dict[str, str]:
 @app.post("/speak")
 async def speak(request: SpeakRequest) -> dict:
     return await voicebox_client.speak(request.text, request.profile)
+
+@app.get("/profiles")
+async def list_profiles() -> list[dict]:
+    return await voicebox_client.list_profiles()

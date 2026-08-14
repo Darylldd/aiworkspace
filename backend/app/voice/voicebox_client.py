@@ -14,6 +14,12 @@ class VoiceboxClient:
     def __init__(self, base_url: str = VOICEBOX_BASE_URL) -> None:
         self._base_url = base_url
 
+    async def list_profiles(self) -> list[dict]:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{self._base_url}/profiles")
+            response.raise_for_status()
+            return response.json()
+
     async def speak(self, text: str, profile: str) -> dict:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
