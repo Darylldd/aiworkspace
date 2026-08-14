@@ -5,6 +5,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.llm.groq_provider import GroqProvider
+from app.tools.registry import build_default_registry
 from app.voice.voicebox_client import VoiceboxClient
 
 load_dotenv()
@@ -18,7 +19,8 @@ app.add_middleware(
     allow_headers=["Content-Type"],
 )
 
-llm_provider = GroqProvider()
+tool_registry = build_default_registry()
+llm_provider = GroqProvider(tool_registry=tool_registry)
 voicebox_client = VoiceboxClient()
 
 
@@ -50,7 +52,10 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
         llm_provider.stream(request.message),
         media_type="text/plain",
     )
-
+@app.post("/chat/agent")
+async def chat_agent(request: ChatRequest) -> ChatResponse:
+    reply = await llm_provider.complete_with_tools(request.message)
+    return ChatResponse(reply=reply)
 
 @app.post("/transcribe")
 async def transcribe(file: UploadFile = File(...)) -> dict[str, str]:
