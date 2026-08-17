@@ -1,4 +1,5 @@
 from app.memory.memory_store import MemoryStore
+from app.search.duckduckgo_provider import DuckDuckGoProvider
 from app.terminal.executor import CommandExecutor
 from app.tools.base import Tool
 from app.tools.current_time import CurrentTimeTool
@@ -6,6 +7,7 @@ from app.tools.filesystem import ListDirectoryTool, ReadFileTool, SearchFilesToo
 from app.tools.memory import RecallTool, RememberTool
 from app.tools.project_info import ProjectInfoTool
 from app.tools.terminal import RunCommandTool
+from app.tools.web_search import WebSearchTool
 from app.workspace.boundary import WorkspaceBoundary
 
 
@@ -32,6 +34,7 @@ def build_default_registry(
     registry.register(ReadFileTool(workspace_boundary))
     registry.register(SearchFilesTool(workspace_boundary))
     registry.register(ProjectInfoTool(workspace_boundary))
+    registry.register(WebSearchTool(DuckDuckGoProvider()))
 
     command_executor = CommandExecutor(working_directory=str(workspace_boundary.root))
     registry.register(RunCommandTool(command_executor))
