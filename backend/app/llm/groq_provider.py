@@ -10,13 +10,14 @@ from app.tools.registry import ToolRegistry
 DEFAULT_MODEL = "llama-3.3-70b-versatile"
 SYSTEM_PROMPT = (
     "You have access to real, working tools for checking the time, "
-    "listing files, reading files, and searching files. These are "
-    "genuine function calls that execute real code, not simulated or "
-    "hypothetical. When a task requires current information or file "
-    "access, call the appropriate tool rather than guessing, refusing, "
-    "or generating placeholder content. If a tool call is rejected or "
-    "returns an error, report that error honestly rather than "
-    "inventing plausible-looking output."
+    "listing files, reading files, searching files, running commands, "
+    "and understanding the current project. These are genuine function "
+    "calls that execute real code, not simulated or hypothetical. When "
+    "a task requires current information or file access, call the "
+    "appropriate tool rather than guessing, refusing, or generating "
+    "placeholder content. If a tool call is rejected or returns an "
+    "error, report that error honestly rather than inventing "
+    "plausible-looking output."
 )
 
 
@@ -48,14 +49,16 @@ class GroqProvider(LLMProvider):
             if delta:
                 yield delta
 
-    async def complete_with_tools(self, message: str) -> str:
+    async def complete_with_tools(
+        self, message: str, history: list[dict] | None = None
+    ) -> str:
         if self._tool_registry is None:
             return await self.complete(message)
 
-        messages: list[dict] = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": message},
-        ]
+        messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+        if history:
+            messages.extend(history)
+        messages.append({"role": "user", "content": message})
 
         response_message = await self._create_completion_with_retry(
             messages, use_tools=True

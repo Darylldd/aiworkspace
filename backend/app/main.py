@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from app.db.database import init_db
 from app.llm.groq_provider import GroqProvider
+from app.memory.conversation_store import ConversationStore
 from app.tools.registry import ToolRegistry, build_default_registry
 from app.voice.voicebox_client import VoiceboxClient
 from app.workspace.boundary import WorkspaceBoundary
@@ -25,19 +26,21 @@ app.add_middleware(
 
 workspace_manager = WorkspaceManager()
 voicebox_client = VoiceboxClient()
+conversation_store = ConversationStore()
 
-# The active tool registry is rebuilt whenever the workspace changes, so
-# filesystem/terminal tools always operate against the currently selected
-# workspace rather than a boundary fixed at startup.
 _current_tool_registry: ToolRegistry | None = None
 _current_llm_provider: GroqProvider | None = None
+_current_workspace_id: int | None = None
+_active_conversation_id: int | None = None
 
 
-def _rebuild_provider_for_workspace(path: str) -> None:
-    global _current_tool_registry, _current_llm_provider
+def _rebuild_provider_for_workspace(workspace_id: int, path: str) -> None:
+    global _current_tool_registry, _current_llm_provider, _current_workspace_id, _active_conversation_id
     boundary = WorkspaceBoundary(root=path)
-    _current_tool_registry = build_default_registry(boundary)
+    _current_tool_registry = build_default_registry(boundary, workspace_id)
     _current_llm_provider = GroqProvider(tool_registry=_current_tool_registry)
+    _current_workspace_id = workspace_id
+    _active_conversation_id = conversation_store.create_conversation(workspace_id)
 
 
 def _get_llm_provider() -> GroqProvider:
@@ -51,7 +54,7 @@ def _get_llm_provider() -> GroqProvider:
 
 existing_active = workspace_manager.get_active()
 if existing_active is not None:
-    _rebuild_provider_for_workspace(existing_active.path)
+    _rebuild_provider_for_workspace(existing_active.id, existing_active.path)
 
 
 class ChatRequest(BaseModel):
@@ -96,7 +99,18 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
 @app.post("/chat/agent")
 async def chat_agent(request: ChatRequest) -> ChatResponse:
     provider = _get_llm_provider()
-    reply = await provider.complete_with_tools(request.message)
+
+    history = []
+    if _active_conversation_id is not None:
+        stored_messages = conversation_store.get_messages(_active_conversation_id)
+        history = [{"role": m.role, "content": m.content} for m in stored_messages]
+
+    reply = await provider.complete_with_tools(request.message, history=history)
+
+    if _active_conversation_id is not None:
+        conversation_store.add_message(_active_conversation_id, "user", request.message)
+        conversation_store.add_message(_active_conversation_id, "assistant", reply)
+
     return ChatResponse(reply=reply)
 
 
@@ -144,6 +158,6 @@ def activate_workspace(workspace_id: int) -> dict:
     except WorkspaceValidationError as error:
         raise HTTPException(status_code=400, detail=str(error))
 
-    _rebuild_provider_for_workspace(workspace.path)
+    _rebuild_provider_for_workspace(workspace.id, workspace.path)
 
     return {"id": workspace.id, "name": workspace.name, "path": workspace.path, "is_active": True}
