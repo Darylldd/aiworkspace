@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { listen } from "@tauri-apps/api/event";
 
 interface VoiceProfile {
   id: string;
@@ -18,6 +19,7 @@ function App() {
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     async function loadProfiles() {
@@ -33,6 +35,16 @@ function App() {
       }
     }
     loadProfiles();
+  }, []);
+
+  useEffect(() => {
+    const unlistenPromise = listen("global-shortcut-triggered", () => {
+      messageInputRef.current?.focus();
+    });
+
+    return () => {
+      unlistenPromise.then((unlisten) => unlisten());
+    };
   }, []);
 
   async function sendMessage() {
@@ -151,9 +163,10 @@ function App() {
       <h1>AI Workspace</h1>
 
       <textarea
+        ref={messageInputRef}
         value={message}
         onChange={(e) => setMessage(e.target.value)}
-        placeholder="Type a message, or record your voice..."
+        placeholder="Type a message, or record your voice... (Ctrl+Space to focus)"
         rows={4}
         style={{ width: "100%", padding: "0.5rem" }}
       />
