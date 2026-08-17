@@ -1,5 +1,10 @@
 import { useState, useRef, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
+import {
+  isPermissionGranted,
+  requestPermission,
+  sendNotification,
+} from "@tauri-apps/plugin-notification";
 
 interface VoiceProfile {
   id: string;
@@ -47,6 +52,23 @@ function App() {
     };
   }, []);
 
+  async function notifyReplyReady(replyText: string) {
+    if (document.hasFocus()) return;
+
+    let granted = await isPermissionGranted();
+    if (!granted) {
+      const permission = await requestPermission();
+      granted = permission === "granted";
+    }
+
+    if (granted) {
+      sendNotification({
+        title: "AI Workspace",
+        body: replyText.slice(0, 120),
+      });
+    }
+  }
+
   async function sendMessage() {
     if (!message.trim()) return;
 
@@ -67,12 +89,17 @@ function App() {
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
+      let fullReply = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        setReply((prev) => prev + decoder.decode(value, { stream: true }));
+        const chunk = decoder.decode(value, { stream: true });
+        fullReply += chunk;
+        setReply((prev) => prev + chunk);
       }
+
+      await notifyReplyReady(fullReply);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
