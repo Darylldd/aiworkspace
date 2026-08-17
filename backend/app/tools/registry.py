@@ -1,6 +1,8 @@
+from app.terminal.executor import CommandExecutor
 from app.tools.base import Tool
 from app.tools.current_time import CurrentTimeTool
 from app.tools.filesystem import ListDirectoryTool, ReadFileTool, SearchFilesTool
+from app.tools.terminal import RunCommandTool
 from app.workspace.boundary import WorkspaceBoundary
 
 
@@ -24,4 +26,8 @@ def build_default_registry(workspace_boundary: WorkspaceBoundary) -> ToolRegistr
     registry.register(ListDirectoryTool(workspace_boundary))
     registry.register(ReadFileTool(workspace_boundary))
     registry.register(SearchFilesTool(workspace_boundary))
+
+    command_executor = CommandExecutor(working_directory=str(workspace_boundary.root))
+    registry.register(RunCommandTool(command_executor))
+
     return registry
