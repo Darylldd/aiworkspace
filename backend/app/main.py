@@ -1,15 +1,18 @@
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from app.db.database import init_db
 from app.llm.groq_provider import GroqProvider
-from app.tools.registry import build_default_registry
+from app.tools.registry import ToolRegistry, build_default_registry
 from app.voice.voicebox_client import VoiceboxClient
 from app.workspace.boundary import WorkspaceBoundary
+from app.workspace.manager import WorkspaceManager, WorkspaceValidationError
 
 load_dotenv()
+init_db()
 
 app = FastAPI()
 
@@ -20,10 +23,35 @@ app.add_middleware(
     allow_headers=["Content-Type"],
 )
 
-workspace_boundary = WorkspaceBoundary(root=".")
-tool_registry = build_default_registry(workspace_boundary)
-llm_provider = GroqProvider(tool_registry=tool_registry)
+workspace_manager = WorkspaceManager()
 voicebox_client = VoiceboxClient()
+
+# The active tool registry is rebuilt whenever the workspace changes, so
+# filesystem/terminal tools always operate against the currently selected
+# workspace rather than a boundary fixed at startup.
+_current_tool_registry: ToolRegistry | None = None
+_current_llm_provider: GroqProvider | None = None
+
+
+def _rebuild_provider_for_workspace(path: str) -> None:
+    global _current_tool_registry, _current_llm_provider
+    boundary = WorkspaceBoundary(root=path)
+    _current_tool_registry = build_default_registry(boundary)
+    _current_llm_provider = GroqProvider(tool_registry=_current_tool_registry)
+
+
+def _get_llm_provider() -> GroqProvider:
+    if _current_llm_provider is None:
+        raise HTTPException(
+            status_code=400,
+            detail="No active workspace. Create and select a workspace first.",
+        )
+    return _current_llm_provider
+
+
+existing_active = workspace_manager.get_active()
+if existing_active is not None:
+    _rebuild_provider_for_workspace(existing_active.path)
 
 
 class ChatRequest(BaseModel):
@@ -39,6 +67,11 @@ class SpeakRequest(BaseModel):
     profile: str = "testsubj1"
 
 
+class WorkspaceCreateRequest(BaseModel):
+    name: str
+    path: str
+
+
 @app.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "ok"}
@@ -46,28 +79,32 @@ def health_check() -> dict[str, str]:
 
 @app.post("/chat")
 async def chat(request: ChatRequest) -> ChatResponse:
-    reply = await llm_provider.complete(request.message)
+    provider = _get_llm_provider()
+    reply = await provider.complete(request.message)
     return ChatResponse(reply=reply)
 
 
 @app.post("/chat/stream")
 async def chat_stream(request: ChatRequest) -> StreamingResponse:
+    provider = _get_llm_provider()
     return StreamingResponse(
-        llm_provider.stream(request.message),
+        provider.stream(request.message),
         media_type="text/plain",
     )
 
 
 @app.post("/chat/agent")
 async def chat_agent(request: ChatRequest) -> ChatResponse:
-    reply = await llm_provider.complete_with_tools(request.message)
+    provider = _get_llm_provider()
+    reply = await provider.complete_with_tools(request.message)
     return ChatResponse(reply=reply)
 
 
 @app.post("/transcribe")
 async def transcribe(file: UploadFile = File(...)) -> dict[str, str]:
+    provider = _get_llm_provider()
     audio_bytes = await file.read()
-    text = await llm_provider.transcribe(
+    text = await provider.transcribe(
         audio_bytes, file.filename or "recording.webm"
     )
     return {"text": text}
@@ -81,3 +118,32 @@ async def list_profiles() -> list[dict]:
 @app.post("/speak")
 async def speak(request: SpeakRequest) -> dict:
     return await voicebox_client.speak(request.text, request.profile)
+
+
+@app.get("/workspaces")
+def list_workspaces() -> list[dict]:
+    return [
+        {"id": w.id, "name": w.name, "path": w.path, "is_active": w.is_active}
+        for w in workspace_manager.list_all()
+    ]
+
+
+@app.post("/workspaces")
+def create_workspace(request: WorkspaceCreateRequest) -> dict:
+    try:
+        workspace = workspace_manager.create(request.name, request.path)
+    except WorkspaceValidationError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    return {"id": workspace.id, "name": workspace.name, "path": workspace.path}
+
+
+@app.post("/workspaces/{workspace_id}/activate")
+def activate_workspace(workspace_id: int) -> dict:
+    try:
+        workspace = workspace_manager.set_active(workspace_id)
+    except WorkspaceValidationError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+    _rebuild_provider_for_workspace(workspace.path)
+
+    return {"id": workspace.id, "name": workspace.name, "path": workspace.path, "is_active": True}
